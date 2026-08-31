@@ -747,6 +747,7 @@
     levelResults: { 1:null, 2:null, 3:null }, // {score, mistakes, time} per level, once completed
     bestTotalScore: loadBestScore(),
     lastLayoutSig: {}, // levelId -> signature, to avoid back-to-back repeats
+    carriedMistakes: { 1:0, 2:0, 3:0 }
   };
 
   let game = null; // current level runtime state
@@ -776,7 +777,7 @@
       arrows, // key -> {r,c,dir,removed}
       totalArrows: level.arrowCells.length,
       removedCount: 0,
-      mistakes: 0,
+      mistakes: session.carriedMistakes[levelId] || 0,
       score: 0,
       currentStreak: 0,
       maxStreak: 0,
@@ -1229,14 +1230,13 @@
   function completeLevel(){
     game.state = "COMPLETE";
     stopTimer();
-
     const levelId = game.levelCfg.id;
     session.levelResults[levelId] = {
       score: game.score,
       mistakes: game.mistakes,
       time: game.elapsedSeconds,
     };
-
+    session.carriedMistakes[levelId] = 0; // this level is cleared — the slate is clean if it's ever replayed
     if(levelId >= 3){
       SoundFX.gameComplete();
       showFinalResults();
@@ -1302,6 +1302,7 @@
   function restartCurrentLevel(){
     stopTimer();
     const id = game.levelCfg.id;
+    session.carriedMistakes[id] = (session.carriedMistakes[id] || 0) + game.mistakes;
     el.levelCompleteOverlay.hidden = true;
     el.failureOverlay.hidden = true;
     startLevel(id); // startLevel calls beginPlaying() once tutorial has been seen
@@ -1316,11 +1317,8 @@
 
   function resetGame(){
     session.levelResults = { 1:null, 2:null, 3:null };
+    session.carriedMistakes = { 1:0, 2:0, 3:0 };
     el.finalResultsOverlay.hidden = true;
-    // Back to the start screen (not straight into Level 1) so the
-    // player actually sees their updated best score before playing
-    // again — jumping directly into gameplay meant that screen (and
-    // the number on it) was never shown after a completed run.
     showScreen(Screen.START);
   }
 
