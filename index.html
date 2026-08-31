@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Պատկերի Գաղտնիքը</title>
+<style>
+  :root{
+    --navy-deep:#061428;
+    --navy:#0B2A4A;
+    --navy-soft:#123a63;
+    --navy-tone-b:#0e335a;
+    --green:#1F8A70;
+    --green-light:#54C7A2;
+    --red:#e5484d;
+    --ice:#EEF5F3;
+    --white:#FFFFFF;
+    --shadow: 0 10px 30px rgba(6,20,40,0.28);
+    --board-gap: 2.5px;
+    /* BOARD FRAME ASPECT RATIO — kept identical across all 3 levels so the
+       puzzle frame never changes shape between levels. Change this one
+       value if your product photos are portrait/landscape instead of
+       square, e.g. "4 / 5". Images are always fit inside with "contain"
+       logic (see renderProductArt), so they're never stretched or cropped
+       no matter what this ratio is. */
+    --board-ratio: 1 / 1;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%;
+    background: radial-gradient(120% 140% at 50% -10%, #143f6b 0%, var(--navy-deep) 60%);
+    font-family: Tahoma, Arial, sans-serif;
+    color:var(--white);
+    overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-touch-callout:none;
+    touch-action: manipulation;
+  }
+  #app{
+    min-height:100vh; min-height:100dvh;
+    display:flex; flex-direction:column; align-items:center;
+    padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+    max-width:560px; margin:0 auto;
+    position:relative;
+  }
+  .screen{ width:100%; flex:1; display:flex; flex-direction:column; }
+  .screen[hidden]{ display:none; }
+
+  /* ---------- Shared buttons ---------- */
+  .primary-btn{
+    background: linear-gradient(135deg, var(--green-light), var(--green));
+    color:#04241c; border:none; font-family:Tahoma, Arial, sans-serif; font-weight:bold;
+    font-size:15px; letter-spacing:0.01em; padding:14px; border-radius:14px;
+    cursor:pointer; box-shadow:0 8px 22px rgba(31,138,112,0.4);
+    transition: transform 0.12s ease;
+  }
+  .primary-btn:active{ transform:scale(0.96); }
+  .ghost-btn{
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16);
+    color:var(--white); font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:13px;
+    padding:11px 18px; border-radius:99px; cursor:pointer; transition: transform 0.12s ease;
+  }
+  .ghost-btn:active{ transform:scale(0.95); }
+
+  /* ---------- START SCREEN ---------- */
+  #screen-start{ align-items:center; text-align:center; padding-top:8px; }
+  .start-main{ flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
+  .start-logo{
+    width:250px; height:250px; object-fit:contain; display:block; margin-bottom:2px;
+    border-radius:18px;
+  }
+  .start-logo.missing{ display:none; }
+  .start-title{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:23px; letter-spacing:0.01em; }
+  .start-sub{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:12.5px; letter-spacing:0.08em; color:var(--green-light); text-transform:uppercase; }
+  .start-tagline{ font-size:14.5px; line-height:1.65; color:rgba(255,255,255,0.72); max-width:300px; margin:4px 0 10px; }
+  .start-tagline b{ color:var(--white); font-weight:bold; }
+  #play-btn{ width:220px; margin-top:6px; }
+  .start-meta{ display:flex; gap:22px; margin-top:18px; }
+  .start-meta div{ text-align:center; }
+  .start-meta .val{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:16px; color:var(--green-light); }
+  .start-meta .lab{ font-size:10px; letter-spacing:0.03em; color:rgba(255,255,255,0.5); margin-top:2px; }
+  .start-disclaimer{
+    width:100%; max-width:340px; margin:14px auto 0;
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+    font-size:10.5px; line-height:1.5; color:rgba(255,255,255,0.45);
+    text-align:center;
+  }
+
+  /* ---------- PLAYING HEADER / FOOTER ---------- */
+  header.game-header{ width:100%; display:flex; flex-direction:column; gap:8px; padding-bottom:10px; }
+  .brand-row{ display:flex; align-items:center; justify-content:space-between; width:100%; }
+  .brand{ display:flex; align-items:center; gap:8px; }
+  .brand-logo{ width:75px; height:75px; object-fit:contain; border-radius:7px; display:block; }
+  .brand-logo.missing{ display:none; }
+  .level-pill{
+    font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:11.5px; letter-spacing:0.01em;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
+    padding:5px 11px; border-radius:99px; color:rgba(255,255,255,0.85);
+  }
+  #sound-toggle{
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14); color:var(--white);
+    width:34px;height:34px;border-radius:10px; display:flex;align-items:center;justify-content:center; font-size:14px; cursor:pointer;
+  }
+  .progress-wrap{ width:100%; display:flex; align-items:center; gap:10px; }
+  .progress-track{ flex:1; height:7px; background:rgba(255,255,255,0.12); border-radius:99px; overflow:hidden; }
+  .progress-fill{ height:100%; width:0%; background:linear-gradient(90deg, var(--green), var(--green-light)); border-radius:99px; transition:width 0.35s cubic-bezier(.4,1.4,.6,1); }
+  .progress-label{ font-size:11.5px; font-weight:bold; font-variant-numeric: tabular-nums; color:rgba(255,255,255,0.8); white-space:nowrap; }
+
+  main{ width:100%; flex:1; display:flex; align-items:center; justify-content:center; padding:6px 0; position:relative; }
+  #board-wrap{ width:100%; max-width:480px; transition: transform 0.3s cubic-bezier(.5,-0.1,.4,1.3), opacity 0.3s ease; }
+  #board-wrap.transitioning{ transform:scale(0.82); opacity:0.25; }
+  #board{
+    position:relative; width:100%;
+    aspect-ratio: var(--board-ratio);
+    border-radius:18px; overflow:hidden;
+    box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.06);
+    background: var(--navy);
+  }
+  #reveal-image, #cover-layer{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #img-error-banner{
+    position:absolute; inset:8px; z-index:5; border-radius:12px; display:none;
+    background:rgba(120,18,18,0.92); border:1px solid rgba(255,140,140,0.5);
+    color:#ffe1e1; font-family:Tahoma, monospace; font-size:11px; line-height:1.5;
+    padding:12px; text-align:center; align-items:center; justify-content:center; flex-direction:column; gap:4px;
+    pointer-events:none;
+  }
+  #img-error-banner b{ font-family:Tahoma, Arial, sans-serif; letter-spacing:0.02em; font-size:12px; }
+  #img-error-banner code{ background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:6px; }
+  #cover-layer{ pointer-events:none; }
+  #cover-layer path, #cover-layer rect{
+    transition: opacity 0.46s cubic-bezier(.3,.8,.4,1), transform 0.46s cubic-bezier(.3,.8,.4,1);
+    transform-box: fill-box; transform-origin:center;
+  }
+  #cover-layer .frag-revealed{ opacity:0; transform:scale(1.14); }
+
+  #grid{ position:absolute; inset:0; display:grid; gap: var(--board-gap); padding: var(--board-gap); }
+  .cell{ position:relative; overflow:visible; }
+  .cell.hole{ pointer-events:none; }
+  /* The tile is a pure hit-target: no background, no border, no square
+     silhouette. What the player sees is only the SVG arrow floating on
+     the puzzle surface. container-type:size + cqmin sizing on the SVG
+     below keeps the arrow glyph perfectly square/undistorted even when
+     the grid cell itself is a non-square rectangle (which can happen
+     since the board's outer frame ratio is fixed independent of the
+     cols/rows grid — see --board-ratio above). */
+  .arrow-tile{
+    position:absolute; inset:0; container-type:size;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    background:transparent; border:none; box-shadow:none;
+    transition: transform 0.16s cubic-bezier(.3,1.5,.5,1);
+    color:#EAF3F1; /* single, constant idle color — never changes to signal "correct" */
+  }
+  .arrow-tile svg{ width:56cqmin; height:56cqmin; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)); transition: filter 0.15s ease; }
+  .arrow-tile.touching{ transform:scale(0.9); }
+  .arrow-tile.spring{ animation: spring-back 0.28s cubic-bezier(.4,1.8,.5,1); }
+  @keyframes spring-back{ 0%{transform:scale(0.9);} 55%{transform:scale(1.06);} 100%{transform:scale(1);} }
+  /* Blocked feedback: brief red flash + resistance nudge. This is the
+     ONLY color state an arrow can be in besides idle — there is no
+     "available/correct" color, ever. */
+  .arrow-tile.blocked-flash{ color:var(--red); }
+  .arrow-tile.blocked-flash svg{ filter: drop-shadow(0 2px 6px rgba(255,70,70,0.55)); }
+  .arrow-tile.blocked-nudge{ animation: nudge 0.32s ease; }
+  @keyframes nudge{
+    0%{ transform:translate(0,0) rotate(0); }
+    22%{ transform: var(--nudge-a, translate(-3px,0)) rotate(-1deg); }
+    50%{ transform: var(--nudge-b, translate(2px,0)) rotate(1deg); }
+    78%{ transform: var(--nudge-a, translate(-1px,0)); }
+    100%{ transform:translate(0,0) rotate(0); }
+  }
+  .arrow-tile.gone{ opacity:0; pointer-events:none; }
+  .cell-particle{ position:absolute; border-radius:50%; pointer-events:none; }
+
+  /* ---------- Footer (in-game) ---------- */
+  footer.game-footer{ width:100%; display:flex; flex-direction:column; gap:10px; padding-top:12px; }
+  .footer-stats-row{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .footer-stat{ display:flex; flex-direction:column; align-items:center; flex:1; }
+  .footer-stat .val{ font-variant-numeric: tabular-nums; font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:14.5px; transition:transform 0.18s ease; }
+  .footer-stat .val.pop{ transform:scale(1.28); color:var(--green-light); }
+  .footer-stat .val.pop-bad{ transform:scale(1.28); color:var(--red); }
+  .footer-stat .lab{ font-size:9.5px; letter-spacing:0.02em; color:rgba(255,255,255,0.45); margin-top:1px; }
+  #restart-btn{ font-size:12px; padding:9px 14px; align-self:center; }
+
+  /* ---------- Toasts / banners ---------- */
+  #level-banner{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    pointer-events:none; z-index:25; opacity:0; transition:opacity 0.3s ease;
+  }
+  #level-banner.show{ opacity:1; }
+  #level-banner .lb-inner{ text-align:center; }
+  #level-banner .lb-num{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:27px; letter-spacing:0.01em; }
+  #level-banner .lb-diff{ font-size:11px; letter-spacing:0.04em; color:var(--green-light); margin-top:4px; }
+
+  /* ---------- Overlays ---------- */
+  .overlay{ position:fixed; inset:0; background: rgba(4,12,24,0.84); backdrop-filter: blur(6px); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .overlay[hidden]{ display:none; }
+  .card{ background: linear-gradient(165deg, #0f3358, var(--navy-deep)); border:1px solid rgba(255,255,255,0.1); border-radius:22px; padding:26px 24px; max-width:380px; width:100%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.5); max-height:92vh; overflow-y:auto; }
+  .card .eyebrow{ font-size:11px; letter-spacing:0.06em; color:var(--green-light); font-weight:bold; margin-bottom:10px; }
+  .card.fail-card .eyebrow{ color:var(--red); }
+  .card h1{ font-family:Tahoma, Arial, sans-serif; font-size:20px; margin:0 0 8px; letter-spacing:0.005em; }
+  .card .sub{ font-size:13px; color:rgba(255,255,255,0.72); line-height:1.55; margin:0 0 14px; }
+  .rule-list{ list-style:none; padding:0; margin:14px 0 20px; text-align:left; display:flex; flex-direction:column; gap:9px; }
+  .rule-list li{ display:flex; gap:10px; align-items:flex-start; font-size:13px; color:rgba(255,255,255,0.85); line-height:1.4; }
+  .rule-num{ flex-shrink:0; width:21px;height:21px;border-radius:7px; background:rgba(84,199,162,0.18); color:var(--green-light); display:flex;align-items:center;justify-content:center; font-size:10.5px; font-weight:bold; }
+
+  .reveal-hero{ width:100%; aspect-ratio: var(--board-ratio); border-radius:16px; overflow:hidden; margin-bottom:14px; position:relative; box-shadow:0 0 0 1px rgba(84,199,162,0.4), 0 0 40px rgba(84,199,162,0.3); background:var(--navy); }
+  .reveal-hero svg{ width:100%;height:100%;display:block; }
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:14px 0 18px; }
+  .stat-box{ background:rgba(255,255,255,0.06); border-radius:12px; padding:10px 4px; }
+  .stat-box .val{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:16px; color:var(--green-light); }
+  .stat-box .lab{ font-size:9.5px; letter-spacing:0.01em; color:rgba(255,255,255,0.5); margin-top:2px; }
+  .btn-row{ display:flex; gap:8px; }
+  .btn-row .primary-btn, .btn-row .ghost-btn{ flex:1; }
+
+  /* ---------- Final results ---------- */
+  .fr-count{ font-size:12.5px; color:rgba(255,255,255,0.65); margin:-6px 0 14px; }
+  .breakdown-list{ display:flex; flex-direction:column; gap:6px; margin:0 0 16px; text-align:left; }
+  .breakdown-row{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .br-level{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:12.5px; white-space:nowrap; }
+  .br-stats{ display:flex; gap:10px; font-size:11px; color:rgba(255,255,255,0.72); flex-wrap:wrap; justify-content:flex-end; }
+  .fr-rating{
+    font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:14px; color:var(--green-light);
+    background:rgba(84,199,162,0.12); border:1px solid rgba(84,199,162,0.3);
+    border-radius:12px; padding:9px; margin-bottom:16px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ START SCREEN ============ -->
+  <section class="screen" id="screen-start">
+    <div class="start-main">
+      <img class="start-logo" id="start-logo-img" alt="Լոգո">
+      <div class="start-title">Բացահայտիր Պատկերը</div>
+      <div class="start-sub">3 Մակարդակ · 3 Պատկեր</div>
+      <p class="start-tagline">Հեռացրու սլաքները մեկ առ մեկ և <b>բացահայտիր թաքնված պատկերը</b>։<br>Զգույշ եղիր՝ յուրաքանչյուր մակարդակ ունի սխալների իր սահմանաչափը։</p>
+      <button class="primary-btn" id="play-btn">ՍԿՍԵԼ</button>
+      <div class="start-meta">
+        <div><div class="val">3</div><div class="lab">Մակարդակ</div></div>
+        <div><div class="val" id="best-score-val">—</div><div class="lab">Լավագույն միավոր</div></div>
+      </div>
+    </div>
+    <p class="start-disclaimer">Դետրալեքս®️ դեղը ցուցված է՝ քրոնիկական երակային հիվանդության ախտանիշների բուժման համար</p>
+  </section>
+
+  <!-- ============ PLAYING SCREEN ============ -->
+  <section class="screen" id="screen-play" hidden>
+    <header class="game-header">
+      <div class="brand-row">
+        <div class="brand">
+          <img class="brand-logo" id="brand-logo-img" alt="Լոգո">
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="level-pill" id="level-pill">Մակարդակ 1 / 3</div>
+          <button id="sound-toggle" aria-label="Ձայնը միացնել/անջատել">🔊</button>
+        </div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label">0 / 0</div>
+      </div>
+    </header>
+
+    <main>
+      <div id="board-wrap">
+        <div id="board">
+          <svg id="reveal-image" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+          <svg id="cover-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+          <div id="grid"></div>
+          <div id="img-error-banner"><b>ՊԱՏԿԵՐԸ ՉԻ ԳՏՆՎԵԼ</b><span>Ակնկալվող ուղի՝ <code id="img-error-path"></code></span><span>Տեղադրեք ֆայլը index.html-ի կողքին</span></div>
+        </div>
+        <div id="level-banner"><div class="lb-inner"><div class="lb-num" id="lb-num">ՄԱԿԱՐԴԱԿ 1</div><div class="lb-diff" id="lb-diff"></div></div></div>
+      </div>
+    </main>
+
+    <footer class="game-footer">
+      <div class="footer-stats-row">
+        <div class="footer-stat"><div class="val" id="timer-val">00:00</div><div class="lab">Ժամանակ</div></div>
+        <div class="footer-stat"><div class="val" id="score-val">0</div><div class="lab">Միավոր</div></div>
+        <div class="footer-stat"><div class="val" id="mistakes-val">0 / 3</div><div class="lab">Սխալներ</div></div>
+      </div>
+      <button class="ghost-btn" id="restart-btn">↻ Վերսկսել</button>
+    </footer>
+  </section>
+</div>
+
+<!-- ============ TUTORIAL OVERLAY (the ONE and ONLY instructions popup) ============ -->
+<div class="overlay" id="tutorial-overlay" hidden>
+  <div class="card">
+    <div class="eyebrow">Ինչպես խաղալ</div>
+    <h1>Հեռացրու սլաքները,<br>բացահայտիր պատկերը</h1>
+    <ul class="rule-list">
+      <li><span class="rule-num">1</span> Հեռացրու սլաքները մեկ առ մեկ։</li>
+      <li><span class="rule-num">2</span> Սլաքը կարող է հեռանալ միայն, եթե իր ճանապարհը ազատ է։</li>
+      <li><span class="rule-num">3</span> Արգելափակված սլաքին հպվելը հաշվվում է որպես սխալ։</li>
+      <li><span class="rule-num">4</span> <span id="tutorial-mistake-line">Յուրաքանչյուր մակարդակում ունես սահմանափակ թվով սխալների իրավունք։</span></li>
+      <li><span class="rule-num">5</span> Հեռացրու բոլոր սլաքները՝ պատկերը ամբողջությամբ բացահայտելու համար։</li>
+    </ul>
+    <button class="primary-btn" id="tutorial-start-btn">ՍԿՍԵԼ ԽԱՂԸ</button>
+  </div>
+</div>
+
+<!-- ============ FAILURE OVERLAY ============ -->
+<div class="overlay" id="failure-overlay" hidden>
+  <div class="card fail-card">
+    <div class="eyebrow">Անհաջողություն</div>
+    <h1>Դուք պարտվեցիք</h1>
+    <p class="sub">Սխալների սահմանաչափը լրացել է։<br>Վերսկսեք մակարդակը՝ կրկին փորձելու համար։</p>
+    <div class="stat-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="stat-box"><div class="val" id="fail-time">00:00</div><div class="lab">Ժամանակ</div></div>
+      <div class="stat-box"><div class="val" id="fail-mistakes">3 / 3</div><div class="lab">Սխալներ</div></div>
+    </div>
+    <button class="primary-btn" id="fail-restart-btn">Վերսկսել մակարդակը</button>
+  </div>
+</div>
+
+<!-- ============ LEVEL COMPLETE OVERLAY ============ -->
+<div class="overlay" id="level-complete-overlay" hidden>
+  <div class="card">
+    <div class="eyebrow">Շնորհավորում ենք</div>
+    <h1 id="lc-title">Դուք ավարտեցիք 1-ին մակարդակը</h1>
+    <p class="sub">Դուք անցնում եք հաջորդ մակարդակ</p>
+    <div class="reveal-hero"><svg id="lc-hero-image" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="val" id="lc-time">00:00</div><div class="lab">Ժամանակ</div></div>
+      <div class="stat-box"><div class="val" id="lc-score">0</div><div class="lab">Միավոր</div></div>
+      <div class="stat-box"><div class="val" id="lc-mistakes">0</div><div class="lab">Սխալներ</div></div>
+    </div>
+    <div class="btn-row">
+      <button class="ghost-btn" id="lc-replay-btn">Կրկնել</button>
+      <button class="primary-btn" id="lc-next-btn">Հաջորդ մակարդակ →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ FINAL RESULTS OVERLAY ============ -->
+<div class="overlay" id="final-results-overlay" hidden>
+  <div class="card">
+    <div class="eyebrow">Խաղն ավարտված է</div>
+    <h1>Շնորհավորում ենք, դուք ավարտեցիք բոլոր մակարդակները</h1>
+    <div class="fr-count">Մակարդակների քանակը՝ 3 / 3</div>
+    <div class="reveal-hero"><svg id="fr-hero-image" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
+    <div class="stat-grid" style="grid-template-columns:1fr 1fr;">
+      <div class="stat-box"><div class="val" id="fr-total-score">0</div><div class="lab">Ընդհանուր միավոր</div></div>
+      <div class="stat-box"><div class="val" id="fr-total-time">00:00</div><div class="lab">Ընդհանուր ժամանակ</div></div>
+    </div>
+    <div class="breakdown-list" id="fr-breakdown"></div>
+    <div class="fr-rating" id="fr-rating">Հիանալի արդյունք!</div>
+    <button class="primary-btn" id="fr-again-btn" style="width:100%;">Գլխավոր էջ</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     CONFIGURATION — replace these four files next to this HTML
+     file to brand the game with your own artwork:
+
+         logo.png     (LOGO_IMAGE)
+         level1.png   (LEVEL_IMAGES[1])
+         level2.png   (LEVEL_IMAGES[2])
+         level3.png   (LEVEL_IMAGES[3])
+
+     All paths are relative — never absolute filesystem paths — so
+     the whole game-folder can be moved/copied anywhere. PNG, JPG,
+     JPEG and WebP all work; only the extension needs to change.
+  ============================================================ */
+  const LOGO_IMAGE = "./logo.png";
+  const LEVEL_IMAGES = {
+    1: "./level1.png",
+    2: "./level2.png",
+    3: "./level3.png",
+  };
+
+  // Force the generated placeholder art instead of the files above —
+  // useful while you don't have final artwork yet. Set to false to
+  // require the real files (a missing file then shows a visible
+  // on-board error rather than silently swapping in placeholder art).
+  const USE_PLACEHOLDER = false;
+
+  // Per-level mistake limit is read from game.levelCfg.maxMistakes — there
+  // is no longer a single global limit for the whole game.
+  const POINTS_PER_ARROW = 10;
+  const MISTAKE_PENALTY = 15;
+
+  const ORDINAL = { 1:"1-ին", 2:"2-րդ", 3:"3-րդ" };
+
+  let productImageFailed = false;
+  (function preloadImages(){
+    if(USE_PLACEHOLDER) return;
+    [LOGO_IMAGE, LEVEL_IMAGES[1], LEVEL_IMAGES[2], LEVEL_IMAGES[3]].forEach(src=>{
+      const probe = new Image();
+      probe.onload = () => console.log("Image loaded successfully:", src);
+      probe.onerror = () => { productImageFailed = true; console.error("Could not load image:", src); };
+      probe.src = src;
+    });
+  })();
+
+  /* ============================================================
+     SEEDED RANDOM (mulberry32) — every level/restart gets its own
+     seed so puzzles are never identical twice, while still being
+     fully reproducible for debugging if a seed is known.
+  ============================================================ */
+  function mulberry32(seed){
+    return function(){
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeSeed(){
+    return (Date.now() ^ Math.floor(Math.random()*0xffffffff) ^ (Math.floor(Math.random()*0xffffffff) << 1)) >>> 0;
+  }
+  function shuffle(arr, rng){
+    const a = arr.slice();
+    for(let i=a.length-1;i>0;i--){ const j = Math.floor(rng()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; }
+    return a;
+  }
+
+  /* ============================================================
+     LEVEL CONFIGURATION — exactly 3 levels. Every playable cell
+     always gets exactly one arrow now (arrowCount === cols*rows on
+     every level — see the puzzle generator below), so difficulty
+     comes purely from grid size, plus a shrinking mistake budget:
+       Level 1 → 6×6  = 36 arrows, maxMistakes: 3  (easiest)
+       Level 2 → 8×7  = 56 arrows, maxMistakes: 2  (moderate)
+       Level 3 → 9×9  = 81 arrows, maxMistakes: 1  (hardest)
+     "ratio" is kept at 1.0 for clarity/documentation only — it is
+     no longer read by the generator, which always fills every cell.
+  ============================================================ */
+  const LEVELS = [
+    { id:1, cols:6, rows:6, ratio:1.0, maxMistakes:3, preferShort:true  },
+    { id:2, cols:8, rows:7, ratio:1.0, maxMistakes:2, preferShort:true  },
+    { id:3, cols:9, rows:9, ratio:1.0, maxMistakes:1, preferShort:false },
+  ];
+
+  const DIRS = ["up","down","left","right"];
+  const DELTA = { up:{dr:-1,dc:0}, down:{dr:1,dc:0}, left:{dr:0,dc:-1}, right:{dr:0,dc:1} };
+  const ROTATION = { up:0, right:90, down:180, left:270 };
+  function cellKey(r,c){ return r+","+c; }
+
+  /* ============================================================
+     BOARD — every level uses a full edge-to-edge rectangular grid.
+     There are no diamond/cross/irregular masks: the entire image
+     area is always covered at the start and always playable, so
+     no part of the picture can ever peek through around the puzzle.
+  ============================================================ */
+  function rectMask(cols,rows){
+    const s = new Set();
+    for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) s.add(cellKey(r,c));
+    return s;
+  }
+
+  /* ============================================================
+     SOLVABLE PUZZLE GENERATOR (MRV constructive solver)
+     Every playable cell gets exactly one arrow — there are no
+     empty cells anymore. Cells are placed most-constrained-cell
+     first: each arrow's direction is only ever checked against
+     cells placed *before* it. Replaying the placement order in
+     reverse (removalOrder) is therefore guaranteed by construction
+     to be a legal clearing sequence for the *entire* board, not
+     just a subset of it — this still holds when every single cell
+     is filled, which is what makes a full-density board provably
+     solvable rather than just densely packed.
+  ============================================================ */
+  function pathCells(r,c,dir,rows,cols){
+    const d = DELTA[dir];
+    const cells = [];
+    let cr=r+d.dr, cc=c+d.dc;
+    while(cr>=0 && cr<rows && cc>=0 && cc<cols){ cells.push(cellKey(cr,cc)); cr+=d.dr; cc+=d.dc; }
+    return cells;
+  }
+
+  function attemptFullPuzzle(cols, rows, playable, rng, preferShort){
+    // playable is always the complete cols*rows grid, so arrowCells
+    // below always ends up equal to every playable cell — there is no
+    // longer a separate pool of empty cells left unassigned.
+    const allCells = Array.from(playable).map(k=>{ const [r,c]=k.split(",").map(Number); return {r,c,key:k}; });
+
+    let remaining = shuffle(allCells, rng);
+    const placed = new Set();
+    const directions = {};
+    const buildOrder = [];
+
+    while(remaining.length){
+      let best = null;
+      for(const cell of remaining){
+        const opts = [];
+        for(const d of DIRS){
+          const path = pathCells(cell.r,cell.c,d,rows,cols);
+          if(path.every(k=>!placed.has(k))) opts.push({d, len:path.length});
+        }
+        if(opts.length===0){ best = {cell, options:[]}; break; }
+        if(best===null || opts.length < best.options.length){ best = {cell, options:opts}; }
+      }
+      if(best.options.length===0) return null;
+      let chosen;
+      if(preferShort){
+        best.options.sort((a,b)=>a.len-b.len);
+        const shortPool = best.options.filter(o=>o.len<=best.options[0].len+1);
+        chosen = shortPool[Math.floor(rng()*shortPool.length)];
+      } else {
+        chosen = best.options[Math.floor(rng()*best.options.length)];
+      }
+      directions[best.cell.key] = chosen.d;
+      placed.add(best.cell.key);
+      buildOrder.push(best.cell.key);
+      remaining = remaining.filter(c=>c.key!==best.cell.key);
+    }
+    return { arrowCells: allCells, directions, removalOrder: buildOrder.slice().reverse() };
+  }
+
+  function generateFullSolvablePuzzle(cols, rows, playable, rng, preferShort){
+    // Every cell must get an arrow — unlike the old density-based
+    // generator, there is no fallback that reduces the arrow count on
+    // failure. If a full assignment can't be found we simply retry
+    // with fresh random choices; generateRandomLevel below also
+    // retries with a fresh seed if every attempt here comes up empty.
+    const maxAttempts = 300;
+    for(let attempt=0; attempt<maxAttempts; attempt++){
+      const result = attemptFullPuzzle(cols, rows, playable, rng, preferShort);
+      if(result) return result;
+    }
+    return null;
+  }
+
+  // Safety-net verifier: replays the designed removal order and confirms
+  // every step is actually unblocked at the moment it's removed.
+  function validatePuzzle(cols, rows, puzzle){
+    const arrows = {};
+    puzzle.arrowCells.forEach(cell=>{
+      arrows[cell.key] = { r:cell.r, c:cell.c, dir:puzzle.directions[cell.key], removed:false };
+    });
+    function blocked(key){
+      const a = arrows[key];
+      const path = pathCells(a.r,a.c,a.dir,rows,cols);
+      for(const k of path){ const o=arrows[k]; if(o && !o.removed) return true; }
+      return false;
+    }
+    for(const key of puzzle.removalOrder){
+      if(blocked(key)) return false;
+      arrows[key].removed = true;
+    }
+    return true;
+  }
+
+  function generateRandomLevel(levelCfg, rng){
+    const { cols, rows } = levelCfg;
+    const playable = rectMask(cols, rows);
+    for(let outer=0; outer<10; outer++){
+      const puzzle = generateFullSolvablePuzzle(cols, rows, playable, rng, levelCfg.preferShort);
+      if(puzzle && validatePuzzle(cols, rows, puzzle)){
+        return { cols, rows, playable, ...puzzle };
+      }
+    }
+    // Extremely unlikely in practice (this construction is correct by
+    // proof for a full board — see comment above), but as a last
+    // resort, drop the preferShort bias, which gives the solver more
+    // freedom to find a valid full assignment.
+    for(let outer=0; outer<10; outer++){
+      const puzzle = generateFullSolvablePuzzle(cols, rows, playable, rng, false);
+      if(puzzle && validatePuzzle(cols, rows, puzzle)){
+        return { cols, rows, playable, ...puzzle };
+      }
+    }
+    console.error("Could not generate a full solvable puzzle for level", levelCfg.id, "— this should not happen.");
+    return null;
+  }
+
+  /* ============================================================
+     PLACEHOLDER ART (only used while USE_PLACEHOLDER = true, or
+     as a dev preview) — replace the real files instead of editing
+     this.
+  ============================================================ */
+  function placeholderSVG(label){
+    return `
+      <defs>
+        <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#0B2A4A"/><stop offset="100%" stop-color="#061428"/></linearGradient>
+        <pattern id="hex" width="9" height="7.8" patternUnits="userSpaceOnUse"><polygon points="4.5,0 9,2.6 9,6.8 4.5,9.4 0,6.8 0,2.6" fill="none" stroke="#3d6f95" stroke-width="0.25" opacity="0.35"/></pattern>
+      </defs>
+      <rect x="0" y="0" width="100" height="100" fill="url(#bgGrad)"/>
+      <rect x="0" y="0" width="100" height="100" fill="url(#hex)"/>
+      <circle cx="50" cy="42" r="22" fill="none" stroke="#54C7A2" stroke-width="1.2" opacity="0.8"/>
+      <text x="50" y="46" text-anchor="middle" font-family="Tahoma, sans-serif" font-weight="bold" font-size="7" fill="#EAF3F1">${label}</text>
+      <text x="50" y="80" text-anchor="middle" font-family="Tahoma, sans-serif" font-size="3.4" fill="#8fb4d6">placeholder</text>
+    `;
+  }
+  function renderProductArt(targetSvg, imageSrc, placeholderLabel){
+    targetSvg.innerHTML = "";
+    if(USE_PLACEHOLDER || !imageSrc){
+      targetSvg.innerHTML = placeholderSVG(placeholderLabel || "PICTURE");
+      return;
+    }
+    const ns = "http://www.w3.org/2000/svg";
+    const img = document.createElementNS(ns, "image");
+    img.setAttributeNS("http://www.w3.org/1999/xlink", "href", imageSrc);
+    img.setAttribute("href", imageSrc);
+    img.setAttribute("x", "0"); img.setAttribute("y", "0");
+    img.setAttribute("width", "100"); img.setAttribute("height", "100");
+    // "meet" (contain) — the full image stays visible and undistorted,
+    // never stretched or cropped, regardless of its native dimensions.
+    img.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    img.addEventListener("load", () => { if(targetSvg === el.revealImage) setImageErrorVisible(false); });
+    img.addEventListener("error", () => {
+      productImageFailed = true;
+      console.error("IMAGE NOT FOUND — expected:", imageSrc);
+      if(targetSvg === el.revealImage) setImageErrorVisible(true, imageSrc);
+    });
+    targetSvg.appendChild(img);
+  }
+  function setImageErrorVisible(show, imageSrc){
+    if(!el.imgErrorBanner) return;
+    el.imgErrorBanner.style.display = show ? "flex" : "none";
+    if(show) el.imgErrorPath.textContent = imageSrc || "";
+  }
+
+  function arrowIconSVG(){
+    return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <path d="M50 8 L82 46 Q86 51 80 53 L64 53 L64 84 Q64 90 58 90 L42 90 Q36 90 36 84 L36 53 L20 53 Q14 51 18 46 Z"
+        fill="currentColor" stroke="rgba(0,0,0,0.18)" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  /* ============================================================
+     REVEAL COVERS — one opaque cover per grid cell, sized to that
+     exact cell. Every cell has exactly one arrow, so every cover
+     has exactly one arrow tied to it: extracting a given arrow
+     reveals its own cell and nothing else. There is no "empty
+     cell" case to account for anymore.
+  ============================================================ */
+  function buildCovers(level){
+    const { cols, rows, playable } = level;
+    const w = 100/cols, h = 100/rows;
+    const covers = {};
+    playable.forEach(key=>{
+      const [r,c] = key.split(",").map(Number);
+      const x = c*w, y = r*h;
+      covers[key] = {
+        key, x, y, w, h,
+        cx: x + w/2, cy: y + h/2,
+        tone: (r+c) % 2,
+        revealed: false,
+      };
+    });
+    return covers;
+  }
+
+  function renderCoverLayer(svgEl, covers){
+    svgEl.innerHTML = "";
+    const ns = "http://www.w3.org/2000/svg";
+    Object.values(covers).forEach(cov=>{
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", cov.x.toFixed(3));
+      rect.setAttribute("y", cov.y.toFixed(3));
+      rect.setAttribute("width", cov.w.toFixed(3));
+      rect.setAttribute("height", cov.h.toFixed(3));
+      rect.setAttribute("fill", cov.tone ? "var(--navy-tone-b)" : "var(--navy)");
+      rect.setAttribute("stroke", "rgba(255,255,255,0.045)");
+      rect.setAttribute("stroke-width", "0.4");
+      rect.id = "cov-" + cov.key;
+      svgEl.appendChild(rect);
+    });
+  }
+
+  /* ============================================================
+     AUDIO ENGINE
+  ============================================================ */
+  const SoundFX = (function(){
+    let ctx = null, enabled = true;
+    function ensureCtx(){
+      if(!ctx){ try{ ctx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){ enabled=false; } }
+      if(ctx && ctx.state==="suspended") ctx.resume();
+      return ctx;
+    }
+    function tone(freq,dur,type,peak,delay){
+      if(!enabled) return;
+      const c = ensureCtx(); if(!c) return;
+      const t0 = c.currentTime + (delay||0);
+      const osc = c.createOscillator(), gain = c.createGain();
+      osc.type = type||"sine";
+      osc.frequency.setValueAtTime(freq,t0);
+      gain.gain.setValueAtTime(0.0001,t0);
+      gain.gain.linearRampToValueAtTime(peak||0.14,t0+0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+      osc.connect(gain).connect(c.destination);
+      osc.start(t0); osc.stop(t0+dur+0.02);
+    }
+    return {
+      setEnabled(v){ enabled=v; },
+      isEnabled(){ return enabled; },
+      whoosh(){
+        if(!enabled) return;
+        const c = ensureCtx(); if(!c) return;
+        const t0=c.currentTime;
+        const osc=c.createOscillator(), gain=c.createGain();
+        osc.type="sine";
+        osc.frequency.setValueAtTime(520,t0);
+        osc.frequency.exponentialRampToValueAtTime(1280,t0+0.13);
+        gain.gain.setValueAtTime(0.0001,t0);
+        gain.gain.linearRampToValueAtTime(0.12,t0+0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001,t0+0.15);
+        osc.connect(gain).connect(c.destination);
+        osc.start(t0); osc.stop(t0+0.17);
+        tone(1600,0.05,"square",0.045,0.02);
+      },
+      blocked(){ tone(170,0.09,"triangle",0.055,0); },
+      fragmentUnlock(){ tone(760,0.09,"sine",0.09,0); tone(1140,0.11,"sine",0.08,0.05); },
+      streak(){ [660,880,1100].forEach((f,i)=>tone(f,0.1,"sine",0.09,i*0.05)); },
+      finalArrow(){ tone(660,0.14,"sine",0.15,0); tone(880,0.16,"sine",0.14,0.1); tone(1320,0.22,"sine",0.13,0.2); },
+      levelComplete(){ [523.25,659.25,783.99,1046.5].forEach((f,i)=>tone(f,0.45,"sine",0.12,i*0.085)); },
+      gameComplete(){ [523.25,659.25,783.99,1046.5,1318.5].forEach((f,i)=>tone(f,0.6,"sine",0.13,i*0.1)); },
+      failure(){ [400,300,220].forEach((f,i)=>tone(f,0.25,"sawtooth",0.08,i*0.09)); },
+    };
+  })();
+  function vibrate(pattern){ if(navigator.vibrate) navigator.vibrate(pattern); }
+
+  /* ============================================================
+     BEST SCORE PERSISTENCE — stored in localStorage so it survives
+     page reloads, not just in-memory for the current tab session.
+  ============================================================ */
+  const BEST_SCORE_KEY = "detralexArrowPuzzle.bestTotalScore";
+  function loadBestScore(){
+    try{
+      const raw = localStorage.getItem(BEST_SCORE_KEY);
+      const n = raw !== null ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : null;
+    }catch(e){ return null; } // localStorage unavailable (privacy mode, sandboxed iframe, etc.)
+  }
+  function saveBestScore(value){
+    try{ localStorage.setItem(BEST_SCORE_KEY, String(value)); }catch(e){ /* ignore */ }
+  }
+
+  /* ============================================================
+     GAME SESSION STATE
+  ============================================================ */
+  const Screen = { START:"start", PLAY:"play" };
+
+  const session = {
+    screen: Screen.START,
+    tutorialSeen: false,
+    levelResults: { 1:null, 2:null, 3:null }, // {score, mistakes, time} per level, once completed
+    bestTotalScore: loadBestScore(),
+    lastLayoutSig: {}, // levelId -> signature, to avoid back-to-back repeats
+  };
+
+  let game = null; // current level runtime state
+
+  function createGameSession(levelId){
+    const levelCfg = LEVELS.find(l=>l.id===levelId);
+    let seed, level, sig, tries=0;
+    do{
+      seed = makeSeed();
+      level = generateRandomLevel(levelCfg, mulberry32(seed));
+      sig = level ? level.removalOrder.map(k=>k+":"+level.directions[k]).join("|") : null;
+      tries++;
+    } while((!level || sig === session.lastLayoutSig[levelId]) && tries < 8);
+    if(!level){
+      throw new Error("Puzzle generation failed repeatedly for level " + levelId + " — check LEVELS config.");
+    }
+    session.lastLayoutSig[levelId] = sig;
+
+    const arrows = {};
+    level.arrowCells.forEach(cell=>{
+      arrows[cell.key] = { r:cell.r, c:cell.c, dir: level.directions[cell.key], removed:false };
+    });
+    const covers = buildCovers(level);
+
+    return {
+      levelCfg, seed, level, covers,
+      arrows, // key -> {r,c,dir,removed}
+      totalArrows: level.arrowCells.length,
+      removedCount: 0,
+      mistakes: 0,
+      score: 0,
+      currentStreak: 0,
+      maxStreak: 0,
+      startTime: null,
+      timerInterval: null,
+      elapsedSeconds: 0,
+      state: "PLAYING",
+    };
+  }
+
+  /* ============================================================
+     DOM REFS
+  ============================================================ */
+  const el = {
+    screenStart: document.getElementById("screen-start"),
+    screenPlay: document.getElementById("screen-play"),
+    startLogoImg: document.getElementById("start-logo-img"),
+    brandLogoImg: document.getElementById("brand-logo-img"),
+    playBtn: document.getElementById("play-btn"),
+    bestScoreVal: document.getElementById("best-score-val"),
+    levelPill: document.getElementById("level-pill"),
+    soundToggle: document.getElementById("sound-toggle"),
+    progressFill: document.getElementById("progress-fill"),
+    progressLabel: document.getElementById("progress-label"),
+    boardWrap: document.getElementById("board-wrap"),
+    board: document.getElementById("board"),
+    revealImage: document.getElementById("reveal-image"),
+    coverLayer: document.getElementById("cover-layer"),
+    grid: document.getElementById("grid"),
+    imgErrorBanner: document.getElementById("img-error-banner"),
+    imgErrorPath: document.getElementById("img-error-path"),
+    levelBanner: document.getElementById("level-banner"),
+    lbNum: document.getElementById("lb-num"),
+    lbDiff: document.getElementById("lb-diff"),
+    timerVal: document.getElementById("timer-val"),
+    scoreVal: document.getElementById("score-val"),
+    mistakesVal: document.getElementById("mistakes-val"),
+    restartBtn: document.getElementById("restart-btn"),
+    tutorialOverlay: document.getElementById("tutorial-overlay"),
+    tutorialMistakeLine: document.getElementById("tutorial-mistake-line"),
+    tutorialStartBtn: document.getElementById("tutorial-start-btn"),
+    failureOverlay: document.getElementById("failure-overlay"),
+    failTime: document.getElementById("fail-time"),
+    failMistakes: document.getElementById("fail-mistakes"),
+    failRestartBtn: document.getElementById("fail-restart-btn"),
+    levelCompleteOverlay: document.getElementById("level-complete-overlay"),
+    lcTitle: document.getElementById("lc-title"),
+    lcHeroImage: document.getElementById("lc-hero-image"),
+    lcTime: document.getElementById("lc-time"),
+    lcScore: document.getElementById("lc-score"),
+    lcMistakes: document.getElementById("lc-mistakes"),
+    lcReplayBtn: document.getElementById("lc-replay-btn"),
+    lcNextBtn: document.getElementById("lc-next-btn"),
+    finalResultsOverlay: document.getElementById("final-results-overlay"),
+    frHeroImage: document.getElementById("fr-hero-image"),
+    frTotalScore: document.getElementById("fr-total-score"),
+    frTotalTime: document.getElementById("fr-total-time"),
+    frBreakdown: document.getElementById("fr-breakdown"),
+    frRating: document.getElementById("fr-rating"),
+    frAgainBtn: document.getElementById("fr-again-btn"),
+  };
+
+  // Logo <img> elements: hide cleanly if logo.png hasn't been supplied
+  // yet, rather than showing a broken-image icon.
+  [el.startLogoImg, el.brandLogoImg].forEach(img=>{
+    if(!img) return;
+    img.addEventListener("error", ()=> img.classList.add("missing"));
+    if(!USE_PLACEHOLDER) img.src = LOGO_IMAGE;
+    else img.classList.add("missing");
+  });
+
+  /* ============================================================
+     SCREEN NAVIGATION
+  ============================================================ */
+  function showScreen(name){
+    session.screen = name;
+    el.screenStart.hidden = name !== Screen.START;
+    el.screenPlay.hidden = name !== Screen.PLAY;
+  }
+
+  /* ============================================================
+     LEVEL LIFECYCLE
+  ============================================================ */
+  function startLevel(levelId, opts){
+    opts = opts || {};
+    game = createGameSession(levelId);
+    renderBoard();
+    updateProgress();
+    updateScoreDisplay(false);
+    updateMistakesDisplay(false);
+    el.levelPill.textContent = `Մակարդակ ${levelId} / 3`;
+    el.timerVal.textContent = "00:00";
+    showScreen(Screen.PLAY);
+
+    if(!opts.skipBanner){
+      showLevelTransition(levelId);
+    }
+
+    if(!session.tutorialSeen){
+      if(el.tutorialMistakeLine){
+        el.tutorialMistakeLine.textContent =
+          `Այս մակարդակում թույլատրվում է առավելագույնը ${game.levelCfg.maxMistakes} սխալ։`;
+      }
+      el.tutorialOverlay.hidden = false;
+    } else {
+      beginPlaying();
+    }
+  }
+
+  function showLevelTransition(levelId){
+    el.lbNum.textContent = "ՄԱԿԱՐԴԱԿ " + levelId;
+    el.lbDiff.textContent = `${game.totalArrows} սլաք`;
+    el.boardWrap.classList.add("transitioning");
+    el.levelBanner.classList.add("show");
+    setTimeout(()=>{
+      el.boardWrap.classList.remove("transitioning");
+      el.levelBanner.classList.remove("show");
+    }, 420);
+  }
+
+  function beginPlaying(){
+    el.tutorialOverlay.hidden = true;
+    session.tutorialSeen = true;
+    game.startTime = Date.now();
+    clearInterval(game.timerInterval);
+    game.timerInterval = setInterval(()=>{
+      game.elapsedSeconds = Math.floor((Date.now()-game.startTime)/1000);
+      el.timerVal.textContent = formatTime(game.elapsedSeconds);
+    }, 250);
+  }
+
+  function stopTimer(){ if(game) clearInterval(game.timerInterval); }
+  function formatTime(sec){
+    const m = Math.floor(sec/60).toString().padStart(2,"0");
+    const s = (sec%60).toString().padStart(2,"0");
+    return `${m}:${s}`;
+  }
+
+  /* ============================================================
+     RENDER BOARD / ARROWS
+  ============================================================ */
+  function renderBoard(){
+    const { cols, rows } = game.level;
+    el.grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    el.grid.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+    renderProductArt(el.revealImage, LEVEL_IMAGES[game.levelCfg.id], "LEVEL " + game.levelCfg.id);
+    renderCoverLayer(el.coverLayer, game.covers);
+    renderArrows();
+  }
+
+  function renderArrows(){
+    el.grid.innerHTML = "";
+    const { cols, rows } = game.level;
+
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const key = cellKey(r,c);
+        const cellEl = document.createElement("div");
+        cellEl.className = "cell";
+        cellEl.style.gridRowStart = r+1;
+        cellEl.style.gridColumnStart = c+1;
+
+        // Every playable cell always has exactly one arrow now — the
+        // grid is always full density, so there is no "hole" case for
+        // a normal in-bounds puzzle tile to fall back to.
+        const arrow = game.arrows[key];
+        if(arrow){
+          const tile = document.createElement("div");
+          tile.className = "arrow-tile";
+          tile.id = "arrow-"+key;
+          tile.style.color = "#EAF3F1";
+          tile.innerHTML = arrowIconSVG();
+          tile.querySelector("svg").style.transform = `rotate(${ROTATION[arrow.dir]}deg)`;
+          tile.addEventListener("pointerdown", (e)=>{ e.preventDefault(); handleArrowTap(key); }, {passive:false});
+          cellEl.appendChild(tile);
+        } else {
+          cellEl.classList.add("hole"); // should be unreachable — kept only as a defensive fallback
+        }
+        el.grid.appendChild(cellEl);
+      }
+    }
+  }
+
+  /* ============================================================
+     CORE LOGIC
+  ============================================================ */
+  function isArrowBlocked(key){
+    const arrow = game.arrows[key];
+    if(!arrow || arrow.removed) return true;
+    const path = pathCells(arrow.r, arrow.c, arrow.dir, game.level.rows, game.level.cols);
+    for(const k of path){
+      const other = game.arrows[k];
+      if(other && !other.removed) return true;
+    }
+    return false;
+  }
+
+  const FLIGHT_VARIANTS = ["fast","glide","bounce","elastic","streak"];
+  function animateArrowRemoval(tile, dir, variant){
+    const distances = { up:"translateY(-360%)", down:"translateY(360%)", left:"translateX(-360%)", right:"translateX(360%)" };
+    const overshoot = { up:"translateY(-300%)", down:"translateY(300%)", left:"translateX(-300%)", right:"translateX(300%)" };
+    let keyframes, options;
+    switch(variant){
+      case "bounce":
+        keyframes = [
+          { transform:"translate(0,0) scale(1)", offset:0 },
+          { transform: overshoot[dir].replace(/[\d.]+%/, m=>(parseFloat(m)*0.28)+"%") + " scale(1.05)", offset:0.35 },
+          { transform: overshoot[dir].replace(/[\d.]+%/, m=>(parseFloat(m)*0.16)+"%") + " scale(0.98)", offset:0.55 },
+          { transform: distances[dir] + " scale(0.35)", opacity:0, offset:1 },
+        ];
+        options = { duration:460, easing:"cubic-bezier(.3,.6,.4,1)" };
+        break;
+      case "elastic":
+        keyframes = [
+          { transform:"scale(1.08)", offset:0 },
+          { transform: overshoot[dir].replace(/[\d.]+%/, m=>(parseFloat(m)*0.1)+"%") + " scale(1.1)", offset:0.25 },
+          { transform: distances[dir] + " scale(0.3)", opacity:0, offset:1 },
+        ];
+        options = { duration:420, easing:"cubic-bezier(.6,-0.3,.7,.3)" };
+        break;
+      case "streak":
+        keyframes = [
+          { transform:"scale(1)", opacity:1, offset:0 },
+          { transform: overshoot[dir].replace(/[\d.]+%/, m=>(parseFloat(m)*0.5)+"%") + " scaleX(1.25) scaleY(0.85)", opacity:0.9, offset:0.4 },
+          { transform: distances[dir] + " scale(0.25)", opacity:0, offset:1 },
+        ];
+        options = { duration:340, easing:"cubic-bezier(.5,0,.6,1)" };
+        break;
+      case "glide":
+        keyframes = [
+          { transform:"scale(1)", offset:0 },
+          { transform: distances[dir] + " scale(0.5)", opacity:0, offset:1 },
+        ];
+        options = { duration:480, easing:"ease-in-out" };
+        break;
+      default: // fast
+        keyframes = [
+          { transform:"scale(1)", offset:0 },
+          { transform: distances[dir] + " scale(0.35)", opacity:0, offset:1 },
+        ];
+        options = { duration:400, easing:"cubic-bezier(.5,-0.2,.7,.4)" };
+    }
+    try{
+      const anim = tile.animate(keyframes, options);
+      anim.onfinish = ()=> tile.classList.add("gone");
+    }catch(e){
+      tile.classList.add("gone");
+    }
+  }
+
+  function spawnParticles(cellEl, dir){
+    const rect = cellEl.getBoundingClientRect();
+    const boardRect = el.board.getBoundingClientRect();
+    const baseX = rect.left - boardRect.left + rect.width/2;
+    const baseY = rect.top - boardRect.top + rect.height/2;
+    const dvec = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] }[dir];
+    const n = 3 + Math.floor(Math.random()*3);
+    for(let i=0;i<n;i++){
+      const p = document.createElement("div");
+      p.className = "cell-particle";
+      const size = 3 + Math.random()*3;
+      p.style.width = size+"px"; p.style.height = size+"px";
+      p.style.left = baseX+"px"; p.style.top = baseY+"px";
+      p.style.background = i%2 ? "#54C7A2" : "#EAF3F1";
+      p.style.opacity = "0.9";
+      el.board.appendChild(p);
+      const spread = (Math.random()-0.5)*40;
+      const dist = 26 + Math.random()*22;
+      const dx = dvec[0]*dist + spread;
+      const dy = dvec[1]*dist + spread;
+      try{
+        const anim = p.animate([
+          { transform:"translate(0,0)", opacity:0.9 },
+          { transform:`translate(${dx}px,${dy}px)`, opacity:0 }
+        ], { duration: 380+Math.random()*160, easing:"ease-out" });
+        anim.onfinish = ()=> p.remove();
+      }catch(e){ p.remove(); }
+    }
+  }
+
+  function spawnFragmentBurst(cxPct, cyPct){
+    const boardRect = el.board.getBoundingClientRect();
+    const x = boardRect.width * (cxPct/100);
+    const y = boardRect.height * (cyPct/100);
+    const burst = document.createElement("div");
+    burst.className = "cell-particle";
+    burst.style.left = x+"px"; burst.style.top = y+"px";
+    burst.style.width = "10px"; burst.style.height = "10px";
+    burst.style.background = "radial-gradient(circle, rgba(84,199,162,0.9), rgba(84,199,162,0))";
+    el.board.appendChild(burst);
+    try{
+      const anim = burst.animate([
+        { transform:"translate(-50%,-50%) scale(0.4)", opacity:0.9 },
+        { transform:"translate(-50%,-50%) scale(4.2)", opacity:0 }
+      ], { duration:520, easing:"ease-out" });
+      anim.onfinish = ()=> burst.remove();
+    }catch(e){ burst.remove(); }
+  }
+
+  function handleArrowTap(key){
+    if(!game || game.state !== "PLAYING") return;
+    const arrow = game.arrows[key];
+    if(!arrow || arrow.removed) return;
+    const tile = document.getElementById("arrow-"+key);
+    const blocked = isArrowBlocked(key);
+
+    if(blocked){
+      registerMistake(tile, arrow);
+      return;
+    }
+
+    // touch feedback then removal
+    if(tile){
+      tile.classList.add("touching");
+      setTimeout(()=>{ tile.classList.remove("touching"); tile.classList.add("spring"); }, 70);
+    }
+    removeArrow(key);
+  }
+
+  function registerMistake(tile, arrow){
+    game.mistakes++;
+    game.currentStreak = 0;
+    game.score = Math.max(0, game.score - MISTAKE_PENALTY);
+    updateMistakesDisplay(true);
+    updateScoreDisplay(false, true);
+    SoundFX.blocked();
+    vibrate([8,20,8]);
+    if(tile){
+      tile.style.setProperty("--nudge-a", DELTA[arrow.dir].dc !== 0 ? "translate(0,-3px)" : "translate(-3px,0)");
+      tile.style.setProperty("--nudge-b", DELTA[arrow.dir].dc !== 0 ? "translate(0,2px)" : "translate(2px,0)");
+      tile.classList.remove("blocked-nudge","blocked-flash");
+      void tile.offsetWidth;
+      tile.classList.add("blocked-nudge","blocked-flash");
+      setTimeout(()=> tile.classList.remove("blocked-flash"), 350);
+    }
+
+    if(game.mistakes >= game.levelCfg.maxMistakes){
+      triggerFailure();
+    }
+  }
+
+  function triggerFailure(){
+    game.state = "FAILED";
+    stopTimer();
+    SoundFX.failure();
+    vibrate([15,40,15,40,15]);
+    setTimeout(()=>{
+      el.failTime.textContent = formatTime(game.elapsedSeconds);
+      el.failMistakes.textContent = `${game.mistakes} / ${game.levelCfg.maxMistakes}`;
+      el.failureOverlay.hidden = false;
+    }, 420);
+  }
+
+  function removeArrow(key){
+    const arrow = game.arrows[key];
+    const cellEl = document.getElementById("arrow-"+key).parentElement;
+    arrow.removed = true;
+    game.removedCount++;
+    game.currentStreak++;
+    game.maxStreak = Math.max(game.maxStreak, game.currentStreak);
+    game.score += POINTS_PER_ARROW;
+    updateScoreDisplay(true);
+
+    const isLast = game.removedCount === game.totalArrows;
+    isLast ? SoundFX.finalArrow() : SoundFX.whoosh();
+    vibrate(isLast ? [10,30,20] : 12);
+
+    const tile = document.getElementById("arrow-"+key);
+    if(tile){
+      const variant = FLIGHT_VARIANTS[Math.floor(Math.random()*FLIGHT_VARIANTS.length)];
+      animateArrowRemoval(tile, arrow.dir, variant);
+      spawnParticles(cellEl, arrow.dir);
+    }
+
+    updateProgress();
+    triggerReveal(key, isLast);
+
+    if(isLast){
+      setTimeout(completeLevel, 620);
+    }
+  }
+
+  /* ============================================================
+     REVEAL LOGIC — every cell has exactly one arrow, so extracting
+     an arrow reveals exactly its own cell, every time. There is no
+     "nearby empty cell" case anymore since there are no empty
+     cells. The only extra step is a final safety cascade on the
+     last arrow, to guarantee every cover is gone (in case any
+     timing edge case ever left one behind).
+  ============================================================ */
+  function revealCover(cov){
+    if(cov.revealed) return;
+    cov.revealed = true;
+    const covEl = document.getElementById("cov-"+cov.key);
+    if(covEl){
+      covEl.classList.add("frag-revealed");
+      setTimeout(()=>{ covEl.style.display = "none"; }, 480);
+    }
+    spawnFragmentBurst(cov.cx, cov.cy);
+    SoundFX.fragmentUnlock();
+    vibrate([4,20,4]);
+  }
+
+  function triggerReveal(arrowKey, isLast){
+    // The area an arrow was covering is revealed exactly when that
+    // arrow is extracted — never before, never a different area.
+    const ownCover = game.covers[arrowKey];
+    if(ownCover) revealCover(ownCover);
+
+    if(isLast){
+      const remaining = Object.values(game.covers).filter(c=>!c.revealed);
+      remaining.forEach((c,i)=> setTimeout(()=> revealCover(c), i*45));
+    }
+  }
+
+  function updateProgress(){
+    el.progressLabel.textContent = `${game.removedCount} / ${game.totalArrows}`;
+    const pct = game.totalArrows ? Math.round((game.removedCount/game.totalArrows)*100) : 0;
+    el.progressFill.style.width = pct + "%";
+  }
+
+  function updateScoreDisplay(good, bad){
+    el.scoreVal.textContent = game.score.toLocaleString();
+    el.scoreVal.classList.remove("pop","pop-bad");
+    if(good || bad){
+      void el.scoreVal.offsetWidth;
+      el.scoreVal.classList.add(bad ? "pop-bad" : "pop");
+      setTimeout(()=> el.scoreVal.classList.remove("pop","pop-bad"), 220);
+    }
+  }
+
+  function updateMistakesDisplay(pop){
+    el.mistakesVal.textContent = `${game.mistakes} / ${game.levelCfg.maxMistakes}`;
+    el.mistakesVal.classList.remove("pop-bad");
+    if(pop){
+      void el.mistakesVal.offsetWidth;
+      el.mistakesVal.classList.add("pop-bad");
+      setTimeout(()=> el.mistakesVal.classList.remove("pop-bad"), 220);
+    }
+  }
+
+  /* ============================================================
+     LEVEL / GAME COMPLETION — scoring is purely performance-based
+     (points per arrow cleared, minus a penalty per mistake). No
+     completion bonus is added — the displayed score is exactly what
+     the player earned during play. The timer is informational only
+     and never feeds into the score.
+  ============================================================ */
+  function completeLevel(){
+    game.state = "COMPLETE";
+    stopTimer();
+
+    const levelId = game.levelCfg.id;
+    session.levelResults[levelId] = {
+      score: game.score,
+      mistakes: game.mistakes,
+      time: game.elapsedSeconds,
+    };
+
+    if(levelId >= 3){
+      SoundFX.gameComplete();
+      showFinalResults();
+    } else {
+      SoundFX.levelComplete();
+      el.lcTitle.textContent = `Դուք ավարտեցիք ${ORDINAL[levelId]} մակարդակը`;
+      renderProductArt(el.lcHeroImage, LEVEL_IMAGES[levelId], "LEVEL " + levelId);
+      el.lcTime.textContent = formatTime(game.elapsedSeconds);
+      el.lcScore.textContent = game.score.toLocaleString();
+      el.lcMistakes.textContent = game.mistakes;
+      el.levelCompleteOverlay.hidden = false;
+    }
+  }
+
+  function showFinalResults(){
+    const results = [1,2,3].map(id=>session.levelResults[id]);
+    const totalScore = results.reduce((s,r)=>s+r.score,0);
+    const totalMistakes = results.reduce((s,r)=>s+r.mistakes,0);
+    const totalTime = results.reduce((s,r)=>s+r.time,0);
+
+    if(session.bestTotalScore === null || totalScore > session.bestTotalScore){
+      session.bestTotalScore = totalScore;
+      saveBestScore(totalScore);
+    }
+    updateBestScoreDisplay();
+
+    el.frTotalScore.textContent = totalScore.toLocaleString();
+    el.frTotalTime.textContent = formatTime(totalTime);
+
+    el.frBreakdown.innerHTML = results.map((r,i)=>`
+      <div class="breakdown-row">
+        <div class="br-level">Մակարդակ ${i+1}</div>
+        <div class="br-stats"><span>${r.score.toLocaleString()} միավոր</span><span>${formatTime(r.time)}</span></div>
+      </div>`).join("");
+
+    // The maximum mistakes possible on a full non-failing playthrough is
+    // sum(maxMistakes - 1) across the 3 levels, since hitting the limit
+    // on any level means failing it rather than completing it (with
+    // today's 3/2/1 limits that ceiling is 2+1+0 = 3). Computing it from
+    // LEVELS instead of hard-coding it means the rating stays correct
+    // if the per-level limits are ever changed again.
+    const maxPossibleMistakes = LEVELS.reduce((s,l)=> s + Math.max(0, l.maxMistakes - 1), 0);
+    let rating;
+    if(totalMistakes === 0){
+      rating = "Անթերի կատարում!";
+    } else if(totalMistakes <= Math.ceil(maxPossibleMistakes / 3)){
+      rating = "Հիանալի արդյունք!";
+    } else if(totalMistakes <= Math.ceil((maxPossibleMistakes * 2) / 3)){
+      rating = "Լավ արդյունք";
+    } else {
+      rating = "Բավարար արդյունք";
+    }
+    el.frRating.textContent = rating;
+
+    renderProductArt(el.frHeroImage, LEVEL_IMAGES[3], "LEVEL 3");
+    el.finalResultsOverlay.hidden = false;
+  }
+
+  function updateBestScoreDisplay(){
+    el.bestScoreVal.textContent = session.bestTotalScore !== null ? session.bestTotalScore.toLocaleString() : "—";
+  }
+
+  function restartCurrentLevel(){
+    stopTimer();
+    const id = game.levelCfg.id;
+    el.levelCompleteOverlay.hidden = true;
+    el.failureOverlay.hidden = true;
+    startLevel(id); // startLevel calls beginPlaying() once tutorial has been seen
+  }
+
+  function startNextLevel(){
+    stopTimer();
+    const nextId = game.levelCfg.id + 1;
+    el.levelCompleteOverlay.hidden = true;
+    startLevel(nextId);
+  }
+
+  function resetGame(){
+    session.levelResults = { 1:null, 2:null, 3:null };
+    el.finalResultsOverlay.hidden = true;
+    // Back to the start screen (not straight into Level 1) so the
+    // player actually sees their updated best score before playing
+    // again — jumping directly into gameplay meant that screen (and
+    // the number on it) was never shown after a completed run.
+    showScreen(Screen.START);
+  }
+
+  /* ============================================================
+     EVENT BINDINGS
+  ============================================================ */
+  function bindEvents(){
+    el.playBtn.addEventListener("click", ()=> startLevel(1, { skipBanner: true }));
+
+    el.tutorialStartBtn.addEventListener("click", beginPlaying);
+
+    el.restartBtn.addEventListener("click", ()=>{
+      if(!game) return;
+      restartCurrentLevel();
+    });
+
+    el.failRestartBtn.addEventListener("click", restartCurrentLevel);
+
+    el.lcReplayBtn.addEventListener("click", restartCurrentLevel);
+    el.lcNextBtn.addEventListener("click", startNextLevel);
+
+    el.frAgainBtn.addEventListener("click", resetGame);
+
+    el.soundToggle.addEventListener("click", ()=>{
+      const next = !SoundFX.isEnabled();
+      SoundFX.setEnabled(next);
+      el.soundToggle.textContent = next ? "🔊" : "🔇";
+    });
+
+    document.addEventListener("touchmove", (e)=>{
+      if(e.target.closest("#board")) e.preventDefault();
+    }, { passive:false });
+  }
+
+  /* ============================================================
+     INIT
+  ============================================================ */
+  function init(){
+    bindEvents();
+    updateBestScoreDisplay();
+    showScreen(Screen.START);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
