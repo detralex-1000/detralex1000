@@ -53,12 +53,14 @@
     font-size:15px; letter-spacing:0.01em; padding:14px; border-radius:14px;
     cursor:pointer; box-shadow:0 8px 22px rgba(31,138,112,0.4);
     transition: transform 0.12s ease;
+    touch-action: manipulation;
   }
   .primary-btn:active{ transform:scale(0.96); }
   .ghost-btn{
     background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16);
     color:var(--white); font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:13px;
     padding:11px 18px; border-radius:99px; cursor:pointer; transition: transform 0.12s ease;
+    touch-action: manipulation;
   }
   .ghost-btn:active{ transform:scale(0.95); }
 
@@ -79,6 +81,17 @@
   .start-meta div{ text-align:center; }
   .start-meta .val{ font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:16px; color:var(--green-light); }
   .start-meta .lab{ font-size:10px; letter-spacing:0.03em; color:rgba(255,255,255,0.5); margin-top:2px; }
+  /* "Stock ticker" record callout: shown only right after a run beats
+     the stored best — old value struck through in red, new value in
+     green with an up-arrow. Falls back to a plain number the rest of
+     the time (see updateBestScoreDisplay/updateBestTimeDisplay). */
+  .start-meta .val .record-old{
+    display:block; color:var(--red); text-decoration:line-through;
+    font-size:0.68em; font-weight:normal; opacity:0.85; line-height:1.3;
+  }
+  .start-meta .val .record-new-row{ display:flex; align-items:center; justify-content:center; gap:3px; }
+  .start-meta .val .record-arrow{ color:var(--green-light); font-size:0.8em; }
+  .start-meta .val .record-new{ color:var(--green-light); font-weight:bold; }
   .start-disclaimer{
     width:100%; max-width:340px; margin:14px auto 0;
     padding-bottom: max(4px, env(safe-area-inset-bottom));
@@ -100,6 +113,7 @@
   #sound-toggle{
     background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14); color:var(--white);
     width:34px;height:34px;border-radius:10px; display:flex;align-items:center;justify-content:center; font-size:14px; cursor:pointer;
+    touch-action: manipulation;
   }
   .progress-wrap{ width:100%; display:flex; align-items:center; gap:10px; }
   .progress-track{ flex:1; height:7px; background:rgba(255,255,255,0.12); border-radius:99px; overflow:hidden; }
@@ -149,6 +163,7 @@
     background:transparent; border:none; box-shadow:none;
     transition: transform 0.16s cubic-bezier(.3,1.5,.5,1);
     color:#EAF3F1; /* single, constant idle color — never changes to signal "correct" */
+    touch-action: manipulation;
   }
   .arrow-tile svg{ width:56cqmin; height:56cqmin; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45)); transition: filter 0.15s ease; }
   .arrow-tile.touching{ transform:scale(0.9); }
@@ -239,7 +254,7 @@
       <p class="start-tagline">Հեռացրու սլաքները մեկ առ մեկ և <b>բացահայտիր թաքնված պատկերը</b>։<br>Զգույշ եղիր՝ յուրաքանչյուր մակարդակ ունի սխալների իր սահմանաչափը։</p>
       <button class="primary-btn" id="play-btn">ՍԿՍԵԼ</button>
       <div class="start-meta">
-        <div><div class="val">3</div><div class="lab">Մակարդակ</div></div>
+        <div><div class="val" id="best-time-val">—</div><div class="lab">Լավագույն ժամանակ</div></div>
         <div><div class="val" id="best-score-val">—</div><div class="lab">Լավագույն միավոր</div></div>
       </div>
     </div>
@@ -387,6 +402,13 @@
   // is no longer a single global limit for the whole game.
   const POINTS_PER_ARROW = 10;
   const MISTAKE_PENALTY = 15;
+  // Every time a level is restarted (for any reason), that level's final
+  // score is multiplied by this factor. A flawless single-attempt clear
+  // keeps the full raw score (0 restarts -> 0.75^0 = 1.0x); each restart
+  // compounds the discount (1 restart -> 0.75x, 2 -> 0.5625x, ...), so a
+  // player who never restarts always scores higher than one who restarts,
+  // for identical in-game performance otherwise.
+  const RESTART_SCORE_DECAY = 0.75;
 
   const ORDINAL = { 1:"1-ին", 2:"2-րդ", 3:"3-րդ" };
 
@@ -721,8 +743,10 @@
   function vibrate(pattern){ if(navigator.vibrate) navigator.vibrate(pattern); }
 
   /* ============================================================
-     BEST SCORE PERSISTENCE — stored in localStorage so it survives
-     page reloads, not just in-memory for the current tab session.
+     BEST SCORE / BEST TIME PERSISTENCE — stored in localStorage so
+     they survive page reloads, not just in-memory for the current
+     tab session. Best time is the fastest COMPLETE 3-level
+     playthrough (lower is better), separate from best score.
   ============================================================ */
   const BEST_SCORE_KEY = "detralexArrowPuzzle.bestTotalScore";
   function loadBestScore(){
@@ -736,6 +760,18 @@
     try{ localStorage.setItem(BEST_SCORE_KEY, String(value)); }catch(e){ /* ignore */ }
   }
 
+  const BEST_TIME_KEY = "detralexArrowPuzzle.bestTotalTime";
+  function loadBestTime(){
+    try{
+      const raw = localStorage.getItem(BEST_TIME_KEY);
+      const n = raw !== null ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : null;
+    }catch(e){ return null; }
+  }
+  function saveBestTime(value){
+    try{ localStorage.setItem(BEST_TIME_KEY, String(value)); }catch(e){ /* ignore */ }
+  }
+
   /* ============================================================
      GAME SESSION STATE
   ============================================================ */
@@ -746,9 +782,34 @@
     tutorialSeen: false,
     levelResults: { 1:null, 2:null, 3:null }, // {score, mistakes, time} per level, once completed
     bestTotalScore: loadBestScore(),
+    bestTotalTime: loadBestTime(),
     lastLayoutSig: {}, // levelId -> signature, to avoid back-to-back repeats
-    carriedMistakes: { 1:0, 2:0, 3:0 }
+    // How many times each level has been restarted THIS playthrough —
+    // for ANY reason (hitting the mistake limit, or voluntarily via the
+    // footer/replay buttons). This does NOT affect the live mistake
+    // counter or the failure threshold (those always reset to a full
+    // fresh budget on every attempt) — it only feeds the score-decay
+    // multiplier below, so restarting costs you points, not fairness.
+    // Reset to 0 for a given level once it's completed (so a later
+    // voluntary replay of an already-won level starts clean).
+    restartCounts: { 1:0, 2:0, 3:0 },
+    // Ephemeral "the run that just finished broke a record" markers,
+    // used to render the old->new stock-ticker callout on the start
+    // screen. Recomputed at the top of every showFinalResults() call —
+    // null unless that specific run actually beat the stored best.
+    scoreRecordDelta: null, // {old, new} or null
+    timeRecordDelta: null,  // {old, new} or null
+    // ONE continuous stopwatch for the whole 3-level playthrough. It is
+    // never reset by starting/restarting a level — only by starting a
+    // brand-new game from the start screen (see resetGame). This is
+    // deliberately on `session`, not `game`, precisely so that
+    // createGameSession() (which runs on every level start AND every
+    // restart) can never touch it.
+    elapsedSeconds: 0,
+    timerStartAt: null,
+    timerInterval: null,
   };
+
 
   let game = null; // current level runtime state
 
@@ -777,15 +838,23 @@
       arrows, // key -> {r,c,dir,removed}
       totalArrows: level.arrowCells.length,
       removedCount: 0,
-      mistakes: session.carriedMistakes[levelId] || 0,
-      score: 0,
+      mistakes: 0, // ALWAYS a full fresh budget, whether this is a first attempt or the 10th restart
+      rawScore: 0, // pure +POINTS_PER_ARROW / -MISTAKE_PENALTY accumulation for THIS attempt only
+      // Fixed once per attempt (restart count for this level doesn't
+      // change mid-attempt) — the displayed/final score is always
+      // rawScore * scoreMultiplier, computed fresh via currentDisplayScore().
+      scoreMultiplier: Math.pow(RESTART_SCORE_DECAY, session.restartCounts[levelId] || 0),
       currentStreak: 0,
       maxStreak: 0,
-      startTime: null,
-      timerInterval: null,
-      elapsedSeconds: 0,
       state: "PLAYING",
     };
+  }
+
+  // The score shown anywhere (footer, popups, final results) is always
+  // derived fresh from rawScore * scoreMultiplier rather than stored
+  // incrementally, so there's no compounding rounding drift.
+  function currentDisplayScore(){
+    return Math.round(game.rawScore * game.scoreMultiplier);
   }
 
   /* ============================================================
@@ -798,6 +867,7 @@
     brandLogoImg: document.getElementById("brand-logo-img"),
     playBtn: document.getElementById("play-btn"),
     bestScoreVal: document.getElementById("best-score-val"),
+    bestTimeVal: document.getElementById("best-time-val"),
     levelPill: document.getElementById("level-pill"),
     soundToggle: document.getElementById("sound-toggle"),
     progressFill: document.getElementById("progress-fill"),
@@ -869,7 +939,7 @@
     updateScoreDisplay(false);
     updateMistakesDisplay(false);
     el.levelPill.textContent = `Մակարդակ ${levelId} / 3`;
-    el.timerVal.textContent = "00:00";
+    el.timerVal.textContent = formatTime(session.elapsedSeconds);
     showScreen(Screen.PLAY);
 
     if(!opts.skipBanner){
@@ -901,15 +971,21 @@
   function beginPlaying(){
     el.tutorialOverlay.hidden = true;
     session.tutorialSeen = true;
-    game.startTime = Date.now();
-    clearInterval(game.timerInterval);
-    game.timerInterval = setInterval(()=>{
-      game.elapsedSeconds = Math.floor((Date.now()-game.startTime)/1000);
-      el.timerVal.textContent = formatTime(game.elapsedSeconds);
-    }, 250);
+    // Resume the one continuous stopwatch for the whole playthrough.
+    // session.elapsedSeconds already holds however much time has
+    // accumulated so far (0 for a brand-new game, or a carried-over
+    // total if this is a restart or a fresh level) — we just pick the
+    // interval back up from there instead of ever zeroing it out.
+    if(!session.timerInterval){
+      session.timerStartAt = Date.now() - session.elapsedSeconds*1000;
+      session.timerInterval = setInterval(()=>{
+        session.elapsedSeconds = Math.floor((Date.now()-session.timerStartAt)/1000);
+        el.timerVal.textContent = formatTime(session.elapsedSeconds);
+      }, 250);
+    }
   }
 
-  function stopTimer(){ if(game) clearInterval(game.timerInterval); }
+  function stopTimer(){ clearInterval(session.timerInterval); session.timerInterval = null; }
   function formatTime(sec){
     const m = Math.floor(sec/60).toString().padStart(2,"0");
     const s = (sec%60).toString().padStart(2,"0");
@@ -1101,7 +1177,7 @@
   function registerMistake(tile, arrow){
     game.mistakes++;
     game.currentStreak = 0;
-    game.score = Math.max(0, game.score - MISTAKE_PENALTY);
+    game.rawScore = Math.max(0, game.rawScore - MISTAKE_PENALTY);
     updateMistakesDisplay(true);
     updateScoreDisplay(false, true);
     SoundFX.blocked();
@@ -1126,7 +1202,7 @@
     SoundFX.failure();
     vibrate([15,40,15,40,15]);
     setTimeout(()=>{
-      el.failTime.textContent = formatTime(game.elapsedSeconds);
+      el.failTime.textContent = formatTime(session.elapsedSeconds);
       el.failMistakes.textContent = `${game.mistakes} / ${game.levelCfg.maxMistakes}`;
       el.failureOverlay.hidden = false;
     }, 420);
@@ -1139,7 +1215,7 @@
     game.removedCount++;
     game.currentStreak++;
     game.maxStreak = Math.max(game.maxStreak, game.currentStreak);
-    game.score += POINTS_PER_ARROW;
+    game.rawScore += POINTS_PER_ARROW;
     updateScoreDisplay(true);
 
     const isLast = game.removedCount === game.totalArrows;
@@ -1201,7 +1277,7 @@
   }
 
   function updateScoreDisplay(good, bad){
-    el.scoreVal.textContent = game.score.toLocaleString();
+    el.scoreVal.textContent = currentDisplayScore().toLocaleString();
     el.scoreVal.classList.remove("pop","pop-bad");
     if(good || bad){
       void el.scoreVal.offsetWidth;
@@ -1231,12 +1307,13 @@
     game.state = "COMPLETE";
     stopTimer();
     const levelId = game.levelCfg.id;
+    const finalScore = currentDisplayScore();
     session.levelResults[levelId] = {
-      score: game.score,
+      score: finalScore,
       mistakes: game.mistakes,
-      time: game.elapsedSeconds,
+      time: session.elapsedSeconds, // cumulative game time at the moment this level finished
     };
-    session.carriedMistakes[levelId] = 0; // this level is cleared — the slate is clean if it's ever replayed
+    session.restartCounts[levelId] = 0; // this level is cleared — the slate is clean if it's ever replayed
     if(levelId >= 3){
       SoundFX.gameComplete();
       showFinalResults();
@@ -1244,24 +1321,55 @@
       SoundFX.levelComplete();
       el.lcTitle.textContent = `Դուք ավարտեցիք ${ORDINAL[levelId]} մակարդակը`;
       renderProductArt(el.lcHeroImage, LEVEL_IMAGES[levelId], "LEVEL " + levelId);
-      el.lcTime.textContent = formatTime(game.elapsedSeconds);
-      el.lcScore.textContent = game.score.toLocaleString();
+      el.lcTime.textContent = formatTime(session.elapsedSeconds);
+      el.lcScore.textContent = finalScore.toLocaleString();
       el.lcMistakes.textContent = game.mistakes;
       el.levelCompleteOverlay.hidden = false;
     }
   }
 
   function showFinalResults(){
+    // Cleared at the top of every call — only set again below if THIS
+    // run actually beat the record, so a run that doesn't improve on
+    // anything correctly falls back to the plain (non-ticker) display.
+    session.scoreRecordDelta = null;
+    session.timeRecordDelta = null;
+
     const results = [1,2,3].map(id=>session.levelResults[id]);
     const totalScore = results.reduce((s,r)=>s+r.score,0);
     const totalMistakes = results.reduce((s,r)=>s+r.mistakes,0);
-    const totalTime = results.reduce((s,r)=>s+r.time,0);
+    // NOT a sum of the per-level entries — those are cumulative snapshots
+    // (how much total time had elapsed when each level finished), not
+    // isolated per-level durations, so summing them would triple/double
+    // count. The true grand total is simply the stopwatch's value right
+    // now, since it never stopped counting between levels.
+    const totalTime = session.elapsedSeconds;
 
-    if(session.bestTotalScore === null || totalScore > session.bestTotalScore){
+    // Capture the PREVIOUS records before overwriting anything — both
+    // the ticker and the rating below need to compare against what the
+    // record was walking in, not what it becomes after this save.
+    const previousBestScore = session.bestTotalScore;
+    const previousBestTime = session.bestTotalTime;
+
+    if(previousBestScore === null || totalScore > previousBestScore){
+      if(previousBestScore !== null){
+        session.scoreRecordDelta = { old: previousBestScore, new: totalScore };
+      }
       session.bestTotalScore = totalScore;
       saveBestScore(totalScore);
     }
     updateBestScoreDisplay();
+
+    // Lower is better for time — only overwrite the record if this run
+    // was faster (or no record exists yet).
+    if(previousBestTime === null || totalTime < previousBestTime){
+      if(previousBestTime !== null){
+        session.timeRecordDelta = { old: previousBestTime, new: totalTime };
+      }
+      session.bestTotalTime = totalTime;
+      saveBestTime(totalTime);
+    }
+    updateBestTimeDisplay();
 
     el.frTotalScore.textContent = totalScore.toLocaleString();
     el.frTotalTime.textContent = formatTime(totalTime);
@@ -1272,19 +1380,41 @@
         <div class="br-stats"><span>${r.score.toLocaleString()} միավոր</span><span>${formatTime(r.time)}</span></div>
       </div>`).join("");
 
-    // The maximum mistakes possible on a full non-failing playthrough is
-    // sum(maxMistakes - 1) across the 3 levels, since hitting the limit
-    // on any level means failing it rather than completing it (with
-    // today's 3/2/1 limits that ceiling is 2+1+0 = 3). Computing it from
-    // LEVELS instead of hard-coding it means the rating stays correct
-    // if the per-level limits are ever changed again.
+    /* --------------------------------------------------------------
+       COMPOSITE RATING — blends mistakes, score, and time. This is a
+       qualitative label only; it does NOT feed back into the numeric
+       score above (that still never depends on elapsed time, per the
+       "no speed-scoring" rule) — it just judges the overall run more
+       holistically than mistakes alone used to.
+         • mistakes  (45%): fewest mistakes across the whole game
+         • score     (35%): how close to the theoretical max score
+         • time      (20%): matched/beat your own previous best time
+                             (a minor tie-breaker, not the main driver —
+                             if this is your first-ever completed run,
+                             it's treated as neutral/best-case rather
+                             than penalized for lacking a baseline)
+    -------------------------------------------------------------- */
     const maxPossibleMistakes = LEVELS.reduce((s,l)=> s + Math.max(0, l.maxMistakes - 1), 0);
+    const mistakeScore = maxPossibleMistakes > 0 ? 1 - (totalMistakes / maxPossibleMistakes) : 1;
+
+    const maxPossibleScore = LEVELS.reduce((s,l)=> s + l.cols*l.rows*POINTS_PER_ARROW, 0);
+    const scoreScore = Math.max(0, Math.min(1, totalScore / maxPossibleScore));
+
+    let timeScore;
+    if(previousBestTime === null || totalTime <= previousBestTime){
+      timeScore = 1; // first completed run ever, or you matched/beat your own best
+    } else {
+      timeScore = Math.max(0, Math.min(1, previousBestTime / totalTime));
+    }
+
+    const composite = (mistakeScore * 0.45) + (scoreScore * 0.35) + (timeScore * 0.20);
+
     let rating;
-    if(totalMistakes === 0){
+    if(composite >= 0.95){
       rating = "Անթերի կատարում!";
-    } else if(totalMistakes <= Math.ceil(maxPossibleMistakes / 3)){
+    } else if(composite >= 0.75){
       rating = "Հիանալի արդյունք!";
-    } else if(totalMistakes <= Math.ceil((maxPossibleMistakes * 2) / 3)){
+    } else if(composite >= 0.5){
       rating = "Լավ արդյունք";
     } else {
       rating = "Բավարար արդյունք";
@@ -1296,13 +1426,36 @@
   }
 
   function updateBestScoreDisplay(){
-    el.bestScoreVal.textContent = session.bestTotalScore !== null ? session.bestTotalScore.toLocaleString() : "—";
+    if(session.scoreRecordDelta){
+      const { old, new: newVal } = session.scoreRecordDelta;
+      el.bestScoreVal.innerHTML =
+        `<span class="record-old">${old.toLocaleString()}</span>` +
+        `<span class="record-new-row"><span class="record-arrow">▲</span><span class="record-new">${newVal.toLocaleString()}</span></span>`;
+    } else {
+      el.bestScoreVal.textContent = session.bestTotalScore !== null ? session.bestTotalScore.toLocaleString() : "—";
+    }
+  }
+
+  function updateBestTimeDisplay(){
+    if(session.timeRecordDelta){
+      const { old, new: newVal } = session.timeRecordDelta;
+      el.bestTimeVal.innerHTML =
+        `<span class="record-old">${formatTime(old)}</span>` +
+        `<span class="record-new-row"><span class="record-arrow">▲</span><span class="record-new">${formatTime(newVal)}</span></span>`;
+    } else {
+      el.bestTimeVal.textContent = session.bestTotalTime !== null ? formatTime(session.bestTotalTime) : "—";
+    }
   }
 
   function restartCurrentLevel(){
     stopTimer();
     const id = game.levelCfg.id;
-    session.carriedMistakes[id] = (session.carriedMistakes[id] || 0) + game.mistakes;
+    // Every restart — whether forced by hitting the mistake limit, or
+    // voluntary via the footer/replay buttons — counts toward this
+    // level's restart tally, which discounts its eventual score. It
+    // does NOT touch mistakes: the next attempt always starts at a
+    // clean 0, with the full mistake budget available again.
+    session.restartCounts[id] = (session.restartCounts[id] || 0) + 1;
     el.levelCompleteOverlay.hidden = true;
     el.failureOverlay.hidden = true;
     startLevel(id); // startLevel calls beginPlaying() once tutorial has been seen
@@ -1317,7 +1470,9 @@
 
   function resetGame(){
     session.levelResults = { 1:null, 2:null, 3:null };
-    session.carriedMistakes = { 1:0, 2:0, 3:0 };
+    session.restartCounts = { 1:0, 2:0, 3:0 };
+    stopTimer();
+    session.elapsedSeconds = 0; // a whole new playthrough starts the clock at zero again
     el.finalResultsOverlay.hidden = true;
     showScreen(Screen.START);
   }
@@ -1351,6 +1506,21 @@
     document.addEventListener("touchmove", (e)=>{
       if(e.target.closest("#board")) e.preventDefault();
     }, { passive:false });
+
+    // Double-tap-to-zoom prevention. The viewport meta's
+    // user-scalable=no (already set above) is ignored by some mobile
+    // browsers for accessibility reasons, so this is the reliable
+    // cross-browser fallback: if two touchend events land close enough
+    // together in time, treat it as a double-tap and suppress the
+    // browser's default zoom behavior for it.
+    let lastTouchEnd = 0;
+    document.addEventListener("touchend", (e)=>{
+      const now = Date.now();
+      if(now - lastTouchEnd <= 350){
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive:false });
   }
 
   /* ============================================================
@@ -1359,6 +1529,7 @@
   function init(){
     bindEvents();
     updateBestScoreDisplay();
+    updateBestTimeDisplay();
     showScreen(Screen.START);
   }
 
