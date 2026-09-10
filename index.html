@@ -68,7 +68,11 @@
   #screen-start{ align-items:center; text-align:center; padding-top:8px; }
   .start-main{ flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; }
   .start-logo{
-    width:250px; height:250px; object-fit:contain; display:block; margin-bottom:2px;
+    /* Reduced from 250px to make room for the history panel below
+       without the page needing to scroll on shorter phones — the page
+       itself must stay static; only the history list scrolls. Bump
+       this back up if your device has room to spare. */
+    width:130px; height:130px; object-fit:contain; display:block; margin-bottom:2px;
     border-radius:18px;
   }
   .start-logo.missing{ display:none; }
@@ -92,6 +96,36 @@
   .start-meta .val .record-new-row{ display:flex; align-items:center; justify-content:center; gap:3px; }
   .start-meta .val .record-arrow{ color:var(--green-light); font-size:0.8em; }
   .start-meta .val .record-new{ color:var(--green-light); font-weight:bold; }
+
+  /* History panel — the ONLY scrollable region on the start screen.
+     The page itself stays static; this box has a capped height and
+     scrolls internally once it has more rows than fit. */
+  .history-panel{
+    width:100%; max-width:340px; margin:14px auto 0;
+    display:flex; flex-direction:column; gap:6px; flex-shrink:0;
+  }
+  .history-header{
+    font-family:Tahoma, Arial, sans-serif; font-weight:bold; font-size:11px;
+    letter-spacing:0.05em; text-transform:uppercase; color:rgba(255,255,255,0.5);
+  }
+  .history-list{
+    max-height: min(190px, 24vh);
+    overflow-y:auto; -webkit-overflow-scrolling:touch;
+    display:flex; flex-direction:column; gap:6px;
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:8px;
+  }
+  .history-row{
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.07);
+    border-radius:10px; padding:8px 10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .history-datetime{ font-size:10px; color:rgba(255,255,255,0.55); white-space:nowrap; text-align:left; }
+  .history-stats{ display:flex; gap:9px; font-size:11.5px; font-weight:bold; white-space:nowrap; }
+  .history-score{ color:var(--green-light); }
+  .history-time{ color:rgba(255,255,255,0.78); font-variant-numeric:tabular-nums; }
+  .history-empty{ font-size:11.5px; color:rgba(255,255,255,0.4); text-align:center; padding:14px 4px; }
+
   .start-disclaimer{
     width:100%; max-width:340px; margin:14px auto 0;
     padding-bottom: max(4px, env(safe-area-inset-bottom));
@@ -257,6 +291,10 @@
         <div><div class="val" id="best-time-val">—</div><div class="lab">Լավագույն ժամանակ</div></div>
         <div><div class="val" id="best-score-val">—</div><div class="lab">Լավագույն միավոր</div></div>
       </div>
+    </div>
+    <div class="history-panel">
+      <div class="history-header">Վերջին խաղարկումները</div>
+      <div class="history-list" id="history-list"><div class="history-empty">Դեռ ավարտված խաղեր չկան</div></div>
     </div>
     <p class="start-disclaimer">Դետրալեքս®️ դեղը ցուցված է՝ քրոնիկական երակային հիվանդության ախտանիշների բուժման համար</p>
   </section>
@@ -773,6 +811,56 @@
   }
 
   /* ============================================================
+     MATCH HISTORY — every completed 3-level playthrough on this
+     device is logged here (date/time, total score, total time),
+     newest first, capped at HISTORY_LIMIT entries. Shown as a
+     scrollable list on the start screen (see renderHistory below).
+  ============================================================ */
+  const HISTORY_KEY = "detralexArrowPuzzle.history";
+  const HISTORY_LIMIT = 20;
+  function loadHistory(){
+    try{
+      const raw = localStorage.getItem(HISTORY_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    }catch(e){ return []; }
+  }
+  function addHistoryEntry(entry){
+    const list = loadHistory();
+    list.unshift(entry); // newest always goes on top, regardless of score
+    if(list.length > HISTORY_LIMIT) list.length = HISTORY_LIMIT;
+    try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); }catch(e){ /* ignore */ }
+    return list;
+  }
+  function formatDateTime(ts){
+    try{
+      // Numeric day/month/year rather than spelled-out month names —
+      // keeps this readable regardless of font glyph coverage, and
+      // dd.mm.yy matches conventional Armenian date ordering.
+      return new Intl.DateTimeFormat("hy-AM", {
+        day:"2-digit", month:"2-digit", year:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false
+      }).format(new Date(ts));
+    }catch(e){
+      return new Date(ts).toLocaleString();
+    }
+  }
+  function renderHistory(){
+    const list = loadHistory();
+    if(list.length === 0){
+      el.historyList.innerHTML = '<div class="history-empty">Դեռ ավարտված խաղեր չկան</div>';
+      return;
+    }
+    el.historyList.innerHTML = list.map(entry => `
+      <div class="history-row">
+        <div class="history-datetime">${formatDateTime(entry.timestamp)}</div>
+        <div class="history-stats">
+          <span class="history-score">${entry.score.toLocaleString()}</span>
+          <span class="history-time">${formatTime(entry.time)}</span>
+        </div>
+      </div>`).join("");
+  }
+
+  /* ============================================================
      GAME SESSION STATE
   ============================================================ */
   const Screen = { START:"start", PLAY:"play" };
@@ -868,6 +956,7 @@
     playBtn: document.getElementById("play-btn"),
     bestScoreVal: document.getElementById("best-score-val"),
     bestTimeVal: document.getElementById("best-time-val"),
+    historyList: document.getElementById("history-list"),
     levelPill: document.getElementById("level-pill"),
     soundToggle: document.getElementById("sound-toggle"),
     progressFill: document.getElementById("progress-fill"),
@@ -926,6 +1015,7 @@
     session.screen = name;
     el.screenStart.hidden = name !== Screen.START;
     el.screenPlay.hidden = name !== Screen.PLAY;
+    if(name === Screen.START) renderHistory();
   }
 
   /* ============================================================
@@ -1344,6 +1434,10 @@
     // count. The true grand total is simply the stopwatch's value right
     // now, since it never stopped counting between levels.
     const totalTime = session.elapsedSeconds;
+
+    // Every completed playthrough gets logged — win a new record or
+    // not — newest entry always goes on top of the history list.
+    addHistoryEntry({ timestamp: Date.now(), score: totalScore, time: totalTime });
 
     // Capture the PREVIOUS records before overwriting anything — both
     // the ticker and the rating below need to compare against what the
